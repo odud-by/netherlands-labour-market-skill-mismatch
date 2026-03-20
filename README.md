@@ -1,6 +1,7 @@
 # Skill Mismatch & Labour Force Participation
 
 **Full Thesis (PDF):** [View here](Full_BSc_Thesis.pdf)
+**Full Code:** [View R Markdown code](./Code.Rmd)
 
 ---
 

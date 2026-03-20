@@ -1,0 +1,454 @@
+---
+title: "Skill Mismatch & Labour Market Outcomes"
+author: "Odud Bin Yousuf"
+date: "`r Sys.Date()`"
+---
+
+```{r, echo=TRUE}
+rm(list=ls()); cat('\014')
+```
+
+Installing the relevant packages and importing the relevant libraries. 
+```{r,echo=TRUE}
+
+#Undo the hashtages below if you need to install anyone of the packages below. 
+#      I have already installed them so have the hashtag 
+
+#install.packages("haven")
+#install.packages("rio")
+#install.packages("plm")
+#install.packages("lmtest")
+#install.packages("sandwich")
+#install.packages("stargazer")
+#install.packages("xtable")
+#install.packages("knitr")
+#install.packages("psych")
+#install.packages("kableExtra")
+#install.packages("flextable")
+#install.packages("moments")
+#install.packages("polycor")
+
+#Importing the relevant libraries
+library(haven)
+library(rio)
+library(readxl)
+library(dplyr)
+library(purrr)
+library(plm)
+library(lmtest)
+library(sandwich)
+library(stargazer)
+library(xtable)
+library(knitr)
+library(psych)
+library(ggplot2)
+library(gridExtra)
+library(moments)
+library(tseries)
+library(polycor)
+```
+
+Setting the Working directory.(set your own directory)
+```{r setup,echo=TRUE,}
+#Setting the working directory 
+getwd()
+#setwd(add working directory here)
+```
+
+Reading the relevant datasets of 'Work and Schooling' from 2019 to 2022 and the background variables (of 2022).  
+```{r,echo=TRUE}
+
+#Reading datasets from 2019 to 2022
+data2022 <- haven::read_dta("cw22o_EN_1.0p.dta")
+data2021 <- haven::read_dta("cw21n_EN_1.0p.dta")
+data2020 <- haven::read_dta("cw20m_EN_1.0p.dta")
+data2019 <- haven::read_dta("cw19l_EN_3.0p.dta")  
+background2022<- haven::read_dta("avars_202204_EN_1.0p.dta")
+
+```
+
+
+Filtering the dataset and removing unwanted variables. Removing the prefixes from the variable names so they have the same names for each dataset. 
+```{r,echo=TRUE}
+
+#Deleting unused/irrelevant variables from dataset: 
+##Deleting from 2022
+
+to_delete_2022<- c(002,008,009,029,035,037,040,042:050, 052,053, 105:110,112,534,
+                   114:118,511,535,536,120,319:321, 121,537,538,124,125,122,123,131, 134:136,610,
+                   146:222, 234:286, 288,289:306, 308:311, 313:316, 318,322,340:360, 362:363,611,
+                   405:407, 528,409:411, 426:435, 441:443, 529, 450:454,557:570,572,578,579,
+                   581:587,588:597, 599:602, 604:609, 496:500, 501:505)
+
+variables_to_delete_2022 <- paste0("cw22o", sprintf("%03d", to_delete_2022 ))
+
+
+data2022_clean <- data2022[, !(names(data2022) %in% variables_to_delete_2022)]
+
+varsleft<-c(print(names(data2022_clean)))
+varsleft_clean <- gsub("cw22o", "", varsleft)
+
+
+#Renaming the variables to remove the "cwyym" where yy stands for the year 
+#                                                             of the dataset and m for month
+
+
+new_names19 <- gsub("^cw19l", "", names(data2019))
+names(data2019) <- new_names19
+new_names20 <- gsub("^cw20m", "", names(data2020))
+names(data2020) <- new_names20
+new_names21 <- gsub("^cw21n", "", names(data2021))
+names(data2021) <- new_names21
+new_names22 <- gsub("^cw22o", "", names(data2022_clean))
+names(data2022_clean) <- new_names22
+
+
+#Deleting/ only keeping the relevant variables from all the datasets 
+data2021_clean <- data2021[, varsleft_clean ]
+data2020_clean <- data2020[, varsleft_clean ]
+
+#005 variable is not in 2019 dataset:
+data2019_clean <- data2019[, varsleft_clean[varsleft_clean!="005"] ] 
+
+```
+
+
+Combining datasets to make the panel datasets. 
+```{r,echo=TRUE}
+#Combining the relevant data into 1 panel data:
+
+suppressWarnings({
+  panel_data21_22 <- list(data2021_clean,data2022_clean) %>% reduce(full_join, by = varsleft_clean)
+})
+
+suppressWarnings({
+panel_data20to22 <- list(data2020_clean,panel_data21_22) %>% reduce(full_join, by = varsleft_clean)
+})
+
+
+suppressWarnings({
+  panel_data19to22 <- list(data2019_clean,panel_data20to22) %>% reduce(full_join, by = varsleft_clean[varsleft_clean!="005"])
+}) #this line takes a while to run 
+```
+
+Clear my global environment from stuff I don't need. 
+```{r,echo=TRUE}
+#remove datasets and variables I don't need now since they are inside panel_data19to22:
+rm(data2019_clean,data2020_clean,data2021_clean,panel_data21_22,new_names19,new_names20 
+   ,new_names21, new_names22)
+#removing unclean datasets from global environment:
+rm(panel_data20to22,data2022,data2021,data2020,data2019, data2022_clean)
+```
+
+
+Reducing to get the final 1 panel dataset that I will use for all my data analysis.
+```{r,echo=TRUE}
+#REDUCING THE PANEL DATA INTO THE RELEVANT one and add gender 
+
+#a]
+#Removing all working students from my dataset: 
+##counting working students: 
+sum(panel_data19to22$'523' %in% 1) 
+sum(panel_data19to22$'523' %in% 1) /22109
+# = 494 out of 22109 are work students. So 2.23% of dataset are work students 
+
+#b]
+#Removing all respondent over the age of 66 as that is the retirement age in NL:
+#over retirement age:
+sum(panel_data19to22$'003' > 66, na.rm = TRUE ) 
+sum(panel_data19to22$'003' > 66 ) /22109
+# = 6171 out of 22109 are over 66. 
+#over retirement age and unemployed:
+sum(panel_data19to22$'003' > 66 & panel_data19to22$'000' %in% 0) 
+sum(panel_data19to22$'003' > 66 & panel_data19to22$'000' %in% 0) / 22109
+# Even though 27.91171% are over 66, 27.10061% of that are unemployed. 
+
+panel_data19to22 <- panel_data19to22[panel_data19to22$'523' != 1, ] #1st remove work student
+panel_data19to22 <- panel_data19to22[panel_data19to22$'003' <= 66, ] #then retirees
+
+#Reducing our dataset from 22109 to 15447 
+
+#c]
+#Adding the gender 
+paneldt <- merge(panel_data19to22, background2022[, c("nomem_encr", "geslacht")]
+                     , by = "nomem_encr", all.x = TRUE)
+
+#d]Keeping the needed variables in the dataset and removing the irrelevant ones
+
+final_variables <- c('nomem_encr','_m','006','577','001','127','003','402','005','031', '549'
+                     ,'550', '551', '552', '553', '554', '555', '033','128','129','145','143','522','144', 'geslacht')
+
+
+paneldt<- paneldt[, final_variables]
+
+```
+
+I remove all observations where the worker is unemployed or long term unemployed since these observations do not add any value to my analysis and are therefore irrelevant. These observations also produce too many missing values. I also drop those with a side-job for similar reasons. 
+```{r,echo=TRUE}
+sum(paneldt$`001` %in% 0 ) # = 4122 observations (26.79% of my datset rn is unemployed)
+#removing unemployed & long term unemployed respectively. 
+paneldt <- paneldt[paneldt$'001' != 0, ]
+paneldt <- paneldt[paneldt$'522' != 1, ]
+
+##########Dropping those with a side job 
+paneldt <- paneldt[!(paneldt$'143' %in% c(1, 2)), ]
+```
+
+
+Dealing with missing values: 
+```{r,echo=TRUE}
+
+#Those missing values for observations that have a job but NA for side-job variables 
+
+sum(paneldt$`143` %in% NA) # 237  NAs 
+# - Turn the NAs that correspond to them having a job into 3 (no side job) 
+#                                since they do have a job but have NA for sidejob. 
+sum(paneldt$`143` %in% NA & paneldt$'001' %in% 1)
+paneldt$'143'[paneldt$`001` == 1 & is.na(paneldt$'143')] <- 3
+
+
+#- remove the rest 58 NAs that are due to merely no response 
+paneldt <- paneldt[complete.cases(paneldt$'143'),]
+#!!!!!dataset is reduced to 10392 (NOTE:later reduced to 10131 when dealing w NAs of wages & hours)
+
+# I can also now remove the variable '143' and '144'
+#             from the dataset since I don't need it anymore 
+paneldt <- paneldt[, !(names(paneldt) == "143")]
+paneldt <- paneldt[, !(names(paneldt) == "144")] #don't need 144 either 
+
+
+```
+
+
+Problems with the independent variables of interest (educational and skill mismatch variables)
+```{r,echo=TRUE}
+#a] Skill mismatch variables: Making the "I don't know" responses into "my skills are insufficiently geared for my work" i.e. differently skilled 
+
+
+#Checking -9s in 549 to 555 = skill matches & 033 
+sum(paneldt$'549' %in% -9)
+sum(paneldt$'550' %in% -9)
+sum(paneldt$'551' %in% -9)
+sum(paneldt$'552' %in% -9)
+sum(paneldt$'553' %in% -9)
+sum(paneldt$'554' %in% -9)
+sum(paneldt$'555' %in% -9)
+# = 133 for each 
+#Are the same respondents putting idk for all the 7 variables? 
+paneldt$'nomem_encr'[paneldt$'554' == -9]
+identical(paneldt$'nomem_encr'[paneldt$'549' == -9], paneldt$'nomem_encr'[paneldt$'555' == -9])
+#Yes! The same respondents are answering idk for 549 to 555
+sum(paneldt$`033` %in% 99) # = 4 idks for those who answered twice or more for 549-555 (='033')
+
+#Change the idks to 1s in 555:
+paneldt$'549'[paneldt$'549' == -9] <- 0
+paneldt$'550'[paneldt$'550' == -9] <- 0
+paneldt$'551'[paneldt$'551' == -9] <- 0
+paneldt$'552'[paneldt$'552' == -9] <- 0
+paneldt$'553'[paneldt$'553' == -9] <- 0
+paneldt$'554'[paneldt$'554' == -9] <- 0
+paneldt$'555'[paneldt$'555' == -9] <- 1
+
+#b] Educational Mismatch variables: Making the "I don't know" responses into "my education level is insufficiently geared for my work" i.e. differently educated 
+
+sum(paneldt$`031` %in% 99) # = 199
+paneldt$'031'[paneldt$'031' == 99] <- 7
+
+```
+
+
+
+Defining the variables as I will use them in my thesis study: 
+```{r,echo=TRUE}
+#Defining the educ variables based on 031=my education... 
+paneldt$edumatch <- ifelse(paneldt$'031' %in% 1 , 1 , 0)
+paneldt$overedu  <- ifelse(paneldt$'031' %in% 2 , 1 , 0)
+paneldt$underedu <- ifelse(paneldt$'031' %in% 3 , 1 , 0)
+paneldt$otheredu <- ifelse(paneldt$'031' %in% c(4,5,6,7 ), 1 , 0)
+
+
+#Defining the skill variables 
+paneldt$skillmatch   <- ifelse(paneldt$'549' %in% 1, 1, 0)
+paneldt$overskilled  <- ifelse(paneldt$`550` %in% 1, 1, 0)
+paneldt$underskilled <- ifelse(paneldt$`551` %in% 1, 1, 0)
+paneldt$otherskill   <- ifelse(paneldt$'552' == 1 | paneldt$'553' == 1 |paneldt$'554' == 1 | paneldt$'555' == 1, 1, 0)  
+
+
+#Renaming '003' age and 'geslacht' gender
+paneldt <- paneldt %>% rename(age = '003' )
+paneldt <- paneldt %>% rename(gender = 'geslacht' )
+
+#Defining the male and female variables 
+paneldt$male     <- ifelse(paneldt$gender %in% 1, 1, 0)
+paneldt$female   <- ifelse(paneldt$gender %in% 2, 1, 0)
+
+#Defining the sectors that the respondent works in based on 402 
+paneldt$primary  <- ifelse(paneldt$'402' %in% c( 1, 2), 1, 0)
+paneldt$secondary <- ifelse(paneldt$'402' %in% c(3, 4, 5), 1, 0)
+paneldt$tertiary1 <- ifelse(paneldt$'402' %in% c(6,7,8), 1, 0)
+paneldt$tertiarycommerce <- ifelse(paneldt$'402' %in% c( 9, 10), 1, 0)
+paneldt$tertiary3 <- ifelse(paneldt$'402' %in% c( 11,12,13,14), 1, 0)
+#Rename 402 sector 
+paneldt <- paneldt %>% rename(sector = '402' )
+
+#Defining the highest level of education achieved using 005 & 006
+paneldt$educlevel_barelyany <- ifelse(paneldt$'005' %in% c(1, 2) | paneldt$'006' %in% 1, 1, 0)
+paneldt$educlevel_prehigh <- ifelse(paneldt$'005' %in% c(3, 4, 5, 6, 7) | paneldt$'006' %in% c(2, 3), 1, 0)
+paneldt$educlevel_high    <- ifelse(paneldt$'005' %in% c(8, 9, 10, 11, 12, 13, 14) | paneldt$'006' %in% 4, 1, 0)
+paneldt$educlevel_further <- ifelse(paneldt$'005' %in% c(15, 16, 17, 18, 19, 20, 21, 22) | paneldt$'006' %in% 5, 1, 0)
+paneldt$educlevel_bachelor <- ifelse(paneldt$'005' %in% c(23,25) | paneldt$'006' %in% 6, 1, 0)
+paneldt$educlevel_masters <- ifelse(paneldt$'005' %in% c(24, 26) | paneldt$'006' %in% 7, 1, 0)
+paneldt$educlevel_phd     <- ifelse(paneldt$'005' %in% 27 , 1, 0)
+
+
+#Renaming hours, wage for 127 and 577 respectively. 
+paneldt <- paneldt %>% rename(hours = '127' )
+paneldt <- paneldt %>% rename(wage = '577' )
+#Renaming nomem_encr and _m as resp_id and date respectively  
+paneldt <- paneldt %>% rename(resp_id = nomem_encr )
+paneldt <- paneldt %>% rename(date = "_m" )
+
+#FINAL REMOVAL of the variables I don't need now since I have already used them in defining the variables I will use
+to_delete_final <- c('006', '005', '031', '549', '550', '551', '552', '553', '554', '555'
+                     , '033', '128', '129', '145', '001', '522', 'gender')
+paneldt <- paneldt[, !(names(paneldt) %in% to_delete_final)]
+```
+
+
+Dealing with the missing and problem values in our dependent variables: wage and hours
+```{r,echo=TRUE}
+
+#How many NAs & idks in hours = avg HRS: 
+sum(paneldt$`hours` %in% NA)    # =111 (= 1.1% of sample)
+sum(paneldt$'hours' %in% 999)  # = 0 idks in hours 
+
+#How many NAs, idks & prefer not to say (pns) in 577 = gross monthly wage
+sum(paneldt$`wage` %in% NA) # =2324  NAs
+sum(paneldt$`wage` %in% -9) # =1176 idks
+sum(paneldt$`wage` %in% -8) # =1599 pns
+#around 50% of the dataset would be removed if i removed these NAs,idks & pns for wage. 
+
+#Removing NAs, -9s and -8s for wage
+paneldt <- paneldt[!(paneldt$wage %in% c(NA, -9, -8)), ]
+#Removing NAs for hours 
+paneldt <- paneldt[!(paneldt$hours %in% NA), ]
+
+
+#Only 9 missing values left in the data which are removed 
+paneldt <- na.omit(paneldt)
+
+
+#Remove sector from dataset as I don't need it anymore
+paneldt <- paneldt[, -which(names(paneldt) == "sector")]
+
+#Remove the  irrelevant stuff from my global environment
+rm(background2022)
+```
+
+
+
+Defining logwage
+```{r,echo=TRUE}
+paneldt$logwage <- log(paneldt$wage)
+```
+
+Making my final dataset into a panel dataset
+```{r,echo=TRUE}
+pdt <- pdata.frame(paneldt , index = c("resp_id" , "date"))
+```
+This is our final sample panel dataset that will be used for all regressions and data analysis. The indexes are the respondent ID and date which correspond to the i and t in regressions since this is how the data should be. We have a final N=5,277 observations. 
+
+
+Summary statisitcs : 
+```{r,echo=TRUE}
+sum1<- describe(pdt[, c('wage', 'hours','age', 'female','male', 'edumatch', 'overedu', 'underedu', 'otheredu',
+                 'educlevel_prehigh', 'overskilled', 'underskilled', 'otherskill', 'skillmatch',
+'educlevel_high', 'educlevel_further', 'educlevel_bachelor', 'educlevel_masters', 'educlevel_phd'
+      ,'primary', 'secondary', 'tertiary1', 'tertiarycommerce', 'tertiary3') ])
+
+
+print(sum1[, c("mean", "sd", "n")])
+```
+
+
+
+REGRESSIONS: 
+
+1] Pooled OLS regressions 
+
+```{r,echo=TRUE}
+#pooled ols with hours 
+pooled_1 <- plm (hours ~ logwage + age + female + educlevel_prehigh +educlevel_high + educlevel_further
+                         + educlevel_bachelor + educlevel_masters + educlevel_phd
+                         + primary + secondary + tertiary1 +tertiarycommerce
+                         + overedu + underedu + otheredu 
+                         + overskilled + underskilled + otherskill , data = pdt, model = "pooling" )
+
+summary(pooled_1)
+#pooled ols with logwages
+pooled_2 <- plm (logwage ~ hours + age + female + educlevel_prehigh +educlevel_high + educlevel_further
+                 + educlevel_bachelor + educlevel_masters + educlevel_phd
+                 + primary + secondary + tertiary1 +tertiarycommerce
+                 + overedu + underedu + otheredu 
+                 + overskilled + underskilled + otherskill , data = pdt, model = "pooling" )
+
+summary(pooled_2)
+```
+
+2]Fixed Effect regresssions
+```{r,echo=TRUE}
+femethod_1 <- plm( hours ~ logwage 
+                 + overedu + underedu + otheredu 
+                 + overskilled + underskilled + otherskill , data = pdt, model = "within" )
+
+summary(femethod_1)
+
+femethod_2 <- plm(logwage ~ hours 
+                  + overedu + underedu + otheredu 
+                  + overskilled + underskilled + otherskill , data = pdt, model = "within" )
+
+summary(femethod_2)
+```
+
+3]Random Effect regressions
+```{r,echo=TRUE}
+remethod_1 <- plm(hours ~ logwage + age + female + educlevel_prehigh +educlevel_high + educlevel_further
+                + educlevel_bachelor + educlevel_masters + educlevel_phd
+                + primary + secondary + tertiary1 +tertiarycommerce
+                + overedu + underedu + otheredu 
+                + overskilled + underskilled + otherskill , data = pdt, model = "random" )
+
+
+summary(remethod_1)
+
+
+remethod_2 <- plm(logwage ~ hours + age + female + educlevel_prehigh +educlevel_high + educlevel_further
+                  + educlevel_bachelor + educlevel_masters + educlevel_phd
+                  + primary + secondary + tertiary1 +tertiarycommerce
+                  + overedu + underedu + otheredu 
+                  + overskilled + underskilled + otherskill , data = pdt, model = "random" )
+
+summary(remethod_2)
+
+```
+
+
+
+Skewness and kurtosis for logwages and wages
+```{r,echo=TRUE}
+# Calculate skewness and kurtosis for wages
+skewness(pdt$wage)
+kurtosis(pdt$wage)
+# Calculate skewness and kurtosis for logwages
+skewness(pdt$logwage)
+kurtosis(pdt$logwage)
+```
+
+Phi-coefficients
+```{r,echo=TRUE}
+#Phi-coefficients 
+as.data.frame(cor(data.frame(pdt$overedu, pdt$underedu, pdt$otheredu, 
+               pdt$overskilled, pdt$underskilled, pdt$otherskill)))
+```
+
+

@@ -1,7 +1,7 @@
 # Skill Mismatch & Labour Force Participation — Empirical Analysis
 
-> **[View Full Thesis](./Full_BSc_Thesis.pdf)**
-> **[View R Markdown code](./Code.Rmd)**
+> **[View Full Thesis](./Full_BSc_Thesis.pdf)** |
+> **[View R Markdown code](./Code.Rmd)** |
 > Panel data study | Netherlands (LISS, 2019–2022) | N = 5,277 observations
 
 ---

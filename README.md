@@ -1,6 +1,6 @@
 # Skill Mismatch & Labour Force Participation
 
-**Full Thesis (PDF):** [View here](./thesis.pdf)
+**Full Thesis (PDF):** [View here](Full BSc Thesis.pdf)
 
 ---
 
